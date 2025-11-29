@@ -1,0 +1,9 @@
+streamlit
+pandas
+flatlib
+geopy
+timezonefinder
+pytz
+matplotlib
+openpyxl
+pyswisseph
