@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS Styling (Mystic Dark Theme) ---
+# --- CSS Styling ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@300;400&display=swap');
@@ -56,15 +56,10 @@ st.markdown("""
         height: 50px;
         font-size: 18px;
         font-weight: bold;
-        transition: all 0.3s ease;
         width: 100%;
         text-transform: uppercase;
         font-family: 'Cinzel', serif;
         margin-top: 20px;
-    }
-    .stButton>button:hover {
-        transform: scale(1.02);
-        box-shadow: 0 0 15px rgba(218, 174, 81, 0.6);
     }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -117,22 +112,22 @@ def get_text_from_excel(df, row_name, col_name):
         return "Interpretation not found."
 
 def draw_chart_visual(chart_obj):
-    # Setup Figure
     fig = plt.figure(figsize=(10, 10), facecolor='none') 
     ax = fig.add_subplot(111, projection='polar')
     ax.set_facecolor('none')
     
-    # 1. Draw Zodiac Ring
     ZODIAC_SYMBOLS = ['♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓']
     sectors = np.linspace(0, 2 * np.pi, 13)
     
+    # Draw Zodiac Ring
     for i in range(12):
+        # Using a named color 'white' with alpha is safer
         ax.fill_between(np.linspace(sectors[i], sectors[i+1], 20), 0.9, 1.0, color='white', alpha=0.05)
         angle_mid = (sectors[i] + sectors[i+1]) / 2
         ax.text(angle_mid, 1.05, ZODIAC_SYMBOLS[i], size=16, color='#f8c291',
                 horizontalalignment='center', verticalalignment='center')
 
-    # 2. Draw House Cusps (The Lines) - THIS IS NEW
+    # Draw House Lines (The Fix is Here)
     house_ids = [const.HOUSE1, const.HOUSE2, const.HOUSE3, const.HOUSE4,
                  const.HOUSE5, const.HOUSE6, const.HOUSE7, const.HOUSE8,
                  const.HOUSE9, const.HOUSE10, const.HOUSE11, const.HOUSE12]
@@ -142,20 +137,17 @@ def draw_chart_visual(chart_obj):
         cusp = houses_list.get(house_ids[i])
         rads = np.deg2rad(cusp.lon)
         
-        # Draw line from center to edge
-        ax.plot([rads, rads], [0, 0.9], color='rgba(255,255,255,0.3)', linestyle='--', linewidth=1)
-        
-        # Add House Number
-        ax.text(rads, 0.4, str(i+1), size=10, color='rgba(255,255,255,0.5)', ha='center', va='center')
+        # Fixed Color Format: (R, G, B, Alpha) using floats 0-1
+        ax.plot([rads, rads], [0, 0.9], color=(1, 1, 1, 0.3), linestyle='--', linewidth=1)
+        ax.text(rads, 0.4, str(i+1), size=10, color=(1, 1, 1, 0.5), ha='center', va='center')
 
-    # 3. Draw Planets
+    # Draw Planets
     planet_symbols = {
         'Sun': '☉', 'Moon': '☽', 'Mercury': '☿', 'Venus': '♀', 'Mars': '♂',
         'Jupiter': '♃', 'Saturn': '♄', 'Uranus': '♅', 'Neptune': '♆', 'Pluto': '♇',
         'North Node': '☊'
     }
     
-    # Planets + North Node
     calc_ids = [const.SUN, const.MOON, const.MERCURY, const.VENUS, const.MARS, 
                 const.JUPITER, const.SATURN, const.URANUS, const.NEPTUNE, const.PLUTO, const.NORTH_NODE]
     
@@ -166,7 +158,6 @@ def draw_chart_visual(chart_obj):
         symbol = planet_symbols.get(obj.id, obj.id[0])
         ax.text(rads, 0.82, symbol, size=14, color='white', ha='center')
 
-    # Cleanup chart
     ax.set_ylim(0, 1.1)
     ax.set_yticks([])
     ax.set_xticks(sectors[:-1])
@@ -192,7 +183,6 @@ df_signs, df_houses = load_data()
 if submitted:
     try:
         with st.spinner('Reading the stars...'):
-            # 1. Calculate
             geolocator = Nominatim(user_agent="astro_soul_app_en")
             location = geolocator.geocode(city)
             if not location:
@@ -216,26 +206,22 @@ if submitted:
             chart = Chart(date, geo_pos, IDs=calc_ids)
             houses_list = chart.houses
 
-        # --- Header ---
         st.markdown(f"<h1>{name}'s Birth Chart</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; opacity: 0.7'>{city} | {birth_date.strftime('%B %d, %Y')} | {birth_time.strftime('%H:%M')}</p>", unsafe_allow_html=True)
         st.markdown("---")
 
         col_viz, col_space, col_text = st.columns([1, 0.1, 1.5])
         
-        # --- Visualization (Left) ---
         with col_viz:
             st.markdown("### Celestial Map")
             fig = draw_chart_visual(chart)
             st.pyplot(fig, use_container_width=True)
             
-            # Show Ascendant (Rising Sign) Info
             asc = chart.get(const.ASC)
             st.info(f"🏹 **Rising Sign (ASC):** {asc.sign} at {format_rounded_up(asc.signlon)}")
 
-        # --- Text Analysis (Right) ---
         with col_text:
-            st.markdown("### Planetary Positions & Houses")
+            st.markdown("### Planetary Positions")
             
             planet_mapping = {
                 const.SUN: 'Sun / Earth', const.MOON: 'Moon', const.MERCURY: 'Mercury',
@@ -266,6 +252,7 @@ if submitted:
 
     except Exception as e:
         st.error(f"Calculation Error: {e}")
+
 else:
     st.markdown("""
     <div style='text-align: center; margin-top: 50px; opacity: 0.6;'>
