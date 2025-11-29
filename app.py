@@ -23,21 +23,15 @@ st.set_page_config(
 # --- CSS Styling (Mystic Dark Theme) ---
 st.markdown("""
     <style>
-    /* Import Mystic Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@300;400&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Lato', sans-serif;
-        direction: ltr; /* English Direction */
     }
-
-    /* Background Gradient */
     .stApp {
         background: linear-gradient(to bottom right, #0f0c29, #302b63, #24243e);
         color: #e0e0e0;
     }
-
-    /* Glassmorphism Cards */
     div.stExpander {
         background: rgba(255, 255, 255, 0.05);
         border-radius: 10px;
@@ -45,21 +39,15 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.1);
         margin-bottom: 10px;
     }
-    
-    /* Headers Styling */
     h1, h2, h3 {
         font-family: 'Cinzel', serif !important;
         color: #f8c291 !important;
         text-shadow: 0px 0px 10px rgba(248, 194, 145, 0.3);
         text-align: center;
     }
-    
-    /* Sidebar Background */
     section[data-testid="stSidebar"] {
         background-color: rgba(15, 12, 41, 0.95);
     }
-
-    /* Custom Button Styling */
     .stButton>button {
         background: linear-gradient(90deg, #d53369 0%, #daae51 100%);
         color: white;
@@ -78,11 +66,8 @@ st.markdown("""
         transform: scale(1.02);
         box-shadow: 0 0 15px rgba(218, 174, 81, 0.6);
     }
-    
-    /* Hide Streamlit Menu */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
     </style>
 """, unsafe_allow_html=True)
 
@@ -90,11 +75,9 @@ st.markdown("""
 
 @st.cache_data
 def load_data():
-    """ Loads CSV data """
     try:
         s = pd.read_csv('signs.csv', index_col=0)
         h = pd.read_csv('houses.csv', index_col=0)
-        # Clean columns/indices
         s.columns = s.columns.str.strip()
         s.index = s.index.str.strip()
         h.columns = h.columns.str.strip()
@@ -104,11 +87,9 @@ def load_data():
         return None, None
 
 def format_rounded_up(float_degrees):
-    """ Rounds degrees up (e.g. 10.1 -> 11) """
     return f"{math.ceil(float_degrees)}°"
 
 def get_house_of_planet(planet_lon, houses_list):
-    """ Calcluates House placement """
     house_ids = [const.HOUSE1, const.HOUSE2, const.HOUSE3, const.HOUSE4,
                  const.HOUSE5, const.HOUSE6, const.HOUSE7, const.HOUSE8,
                  const.HOUSE9, const.HOUSE10, const.HOUSE11, const.HOUSE12]
@@ -117,65 +98,80 @@ def get_house_of_planet(planet_lon, houses_list):
         next_idx = (i + 1) % 12
         cusp_end = houses_list.get(house_ids[next_idx]).lon
         
-        if cusp_end < cusp_start: # Crossing 360/0
+        if cusp_end < cusp_start: 
             if planet_lon >= cusp_start or planet_lon < cusp_end: return i + 1
         else:
             if cusp_start <= planet_lon < cusp_end: return i + 1
     return 1
 
 def get_text_from_excel(df, row_name, col_name):
-    """ Gets text and cleans [source] tags """
     try:
         if df is None or df.empty: return "Data missing."
         text = df.loc[row_name, col_name]
         if isinstance(text, pd.Series): text = text.iloc[0]
-        
         text_str = str(text)
         if "]" in text_str:
             return text_str.split(']')[-1].strip()
         return text_str
     except:
-        return "Text not found."
+        return "Interpretation not found."
 
 def draw_chart_visual(chart_obj):
-    """ Draws the visual chart using Matplotlib """
-    fig = plt.figure(figsize=(8, 8), facecolor='none') 
+    # Setup Figure
+    fig = plt.figure(figsize=(10, 10), facecolor='none') 
     ax = fig.add_subplot(111, projection='polar')
     ax.set_facecolor('none')
     
+    # 1. Draw Zodiac Ring
     ZODIAC_SYMBOLS = ['♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓']
     sectors = np.linspace(0, 2 * np.pi, 13)
     
-    # Draw Zodiac Ring
     for i in range(12):
-        color = 'white'
-        ax.fill_between(np.linspace(sectors[i], sectors[i+1], 20), 0.9, 1.0, color=color, alpha=0.05)
+        ax.fill_between(np.linspace(sectors[i], sectors[i+1], 20), 0.9, 1.0, color='white', alpha=0.05)
         angle_mid = (sectors[i] + sectors[i+1]) / 2
         ax.text(angle_mid, 1.05, ZODIAC_SYMBOLS[i], size=16, color='#f8c291',
                 horizontalalignment='center', verticalalignment='center')
+
+    # 2. Draw House Cusps (The Lines) - THIS IS NEW
+    house_ids = [const.HOUSE1, const.HOUSE2, const.HOUSE3, const.HOUSE4,
+                 const.HOUSE5, const.HOUSE6, const.HOUSE7, const.HOUSE8,
+                 const.HOUSE9, const.HOUSE10, const.HOUSE11, const.HOUSE12]
     
+    houses_list = chart_obj.houses
+    for i in range(12):
+        cusp = houses_list.get(house_ids[i])
+        rads = np.deg2rad(cusp.lon)
+        
+        # Draw line from center to edge
+        ax.plot([rads, rads], [0, 0.9], color='rgba(255,255,255,0.3)', linestyle='--', linewidth=1)
+        
+        # Add House Number
+        ax.text(rads, 0.4, str(i+1), size=10, color='rgba(255,255,255,0.5)', ha='center', va='center')
+
+    # 3. Draw Planets
     planet_symbols = {
         'Sun': '☉', 'Moon': '☽', 'Mercury': '☿', 'Venus': '♀', 'Mars': '♂',
-        'Jupiter': '♃', 'Saturn': '♄', 'Uranus': '♅', 'Neptune': '♆', 'Pluto': '♇'
+        'Jupiter': '♃', 'Saturn': '♄', 'Uranus': '♅', 'Neptune': '♆', 'Pluto': '♇',
+        'North Node': '☊'
     }
     
+    # Planets + North Node
     calc_ids = [const.SUN, const.MOON, const.MERCURY, const.VENUS, const.MARS, 
-                const.JUPITER, const.SATURN, const.URANUS, const.NEPTUNE, const.PLUTO]
+                const.JUPITER, const.SATURN, const.URANUS, const.NEPTUNE, const.PLUTO, const.NORTH_NODE]
     
     for pid in calc_ids:
         obj = chart_obj.get(pid)
         rads = np.deg2rad(obj.lon)
-        
-        # Plot Planet
         ax.plot(rads, 0.75, 'o', markersize=9, color='#f8c291', markeredgecolor='none', alpha=0.9)
         symbol = planet_symbols.get(obj.id, obj.id[0])
         ax.text(rads, 0.82, symbol, size=14, color='white', ha='center')
 
+    # Cleanup chart
     ax.set_ylim(0, 1.1)
     ax.set_yticks([])
     ax.set_xticks(sectors[:-1])
     ax.set_xticklabels([])
-    ax.grid(True, alpha=0.1, color='white')
+    ax.grid(False)
     ax.spines['polar'].set_visible(False)
     
     return fig
@@ -190,16 +186,15 @@ with st.sidebar:
         birth_time = st.time_input("Time of Birth", datetime.time(17, 51))
         submitted = st.form_submit_button("Reveal Soul Map 🔮")
 
-# --- Main App Logic ---
+# --- Main Logic ---
 df_signs, df_houses = load_data()
 
 if submitted:
     try:
         with st.spinner('Reading the stars...'):
-            # 1. Calculation Engine
+            # 1. Calculate
             geolocator = Nominatim(user_agent="astro_soul_app_en")
             location = geolocator.geocode(city)
-            
             if not location:
                 st.error(f"City not found: {city}")
                 st.stop()
@@ -226,18 +221,22 @@ if submitted:
         st.markdown(f"<p style='text-align: center; opacity: 0.7'>{city} | {birth_date.strftime('%B %d, %Y')} | {birth_time.strftime('%H:%M')}</p>", unsafe_allow_html=True)
         st.markdown("---")
 
-        # --- Layout: Viz (Left) & Text (Right) ---
         col_viz, col_space, col_text = st.columns([1, 0.1, 1.5])
         
+        # --- Visualization (Left) ---
         with col_viz:
             st.markdown("### Celestial Map")
             fig = draw_chart_visual(chart)
             st.pyplot(fig, use_container_width=True)
-
-        with col_text:
-            st.markdown("### Planetary Positions")
             
-            # Mapping from Flatlib ID to CSV Column Name
+            # Show Ascendant (Rising Sign) Info
+            asc = chart.get(const.ASC)
+            st.info(f"🏹 **Rising Sign (ASC):** {asc.sign} at {format_rounded_up(asc.signlon)}")
+
+        # --- Text Analysis (Right) ---
+        with col_text:
+            st.markdown("### Planetary Positions & Houses")
+            
             planet_mapping = {
                 const.SUN: 'Sun / Earth', const.MOON: 'Moon', const.MERCURY: 'Mercury',
                 const.VENUS: 'Venus', const.MARS: 'Mars', const.JUPITER: 'jupiter',
@@ -250,11 +249,9 @@ if submitted:
                 house_num = get_house_of_planet(obj.lon, houses_list)
                 csv_col_name = planet_mapping.get(planet_id)
                 
-                # Fetch Text
                 sign_text = get_text_from_excel(df_signs, obj.sign, csv_col_name)
                 house_text = get_text_from_excel(df_houses, house_num, csv_col_name)
                 
-                # Create Card
                 with st.expander(f"{obj.id} in {obj.sign} (House {house_num})  |  {format_rounded_up(obj.signlon)}"):
                     st.markdown(f"""
                     <div style='margin-bottom: 15px;'>
@@ -269,9 +266,7 @@ if submitted:
 
     except Exception as e:
         st.error(f"Calculation Error: {e}")
-
 else:
-    # Welcome Screen
     st.markdown("""
     <div style='text-align: center; margin-top: 50px; opacity: 0.6;'>
         <h2>Ready to explore your soul map?</h2>
