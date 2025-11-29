@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS Styling ---
+# --- CSS Styling (Mystic Dark Theme) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@300;400&display=swap');
@@ -61,6 +61,7 @@ st.markdown("""
         font-family: 'Cinzel', serif;
         margin-top: 20px;
     }
+    /* Hide Streamlit Menu */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
@@ -112,22 +113,41 @@ def get_text_from_excel(df, row_name, col_name):
         return "Interpretation not found."
 
 def draw_chart_visual(chart_obj):
+    # Setup Figure
     fig = plt.figure(figsize=(10, 10), facecolor='none') 
     ax = fig.add_subplot(111, projection='polar')
     ax.set_facecolor('none')
     
+    # --- 1. ROTATION LOGIC (The Magic Part) ---
+    # We want the Ascendant (ASC) to be at PI radians (180 degrees / 9 o'clock)
+    asc_obj = chart_obj.get(const.ASC)
+    asc_lon_rad = np.deg2rad(asc_obj.lon)
+    
+    # Calculate offset: Target (PI) - Actual (ASC)
+    rotation_offset = np.pi - asc_lon_rad
+    
+    # Apply rotation to the entire plot
+    ax.set_theta_offset(rotation_offset)
+    ax.set_theta_direction(1) # Counter-clockwise
+    
+    # --- 2. Draw Zodiac Background ---
     ZODIAC_SYMBOLS = ['♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓']
     sectors = np.linspace(0, 2 * np.pi, 13)
     
-    # Draw Zodiac Ring
     for i in range(12):
-        # Using a named color 'white' with alpha is safer
-        ax.fill_between(np.linspace(sectors[i], sectors[i+1], 20), 0.9, 1.0, color='white', alpha=0.05)
+        # Draw colored wedges for signs
+        color = 'white'
+        ax.fill_between(np.linspace(sectors[i], sectors[i+1], 20), 0.9, 1.0, color=color, alpha=0.05)
+        
+        # Add Zodiac Symbol
         angle_mid = (sectors[i] + sectors[i+1]) / 2
+        
+        # We need to rotate text specifically so it's readable
+        # But here we just place it on the plot, the plot rotation handles position
         ax.text(angle_mid, 1.05, ZODIAC_SYMBOLS[i], size=16, color='#f8c291',
                 horizontalalignment='center', verticalalignment='center')
 
-    # Draw House Lines (The Fix is Here)
+    # --- 3. Draw House Cusps ---
     house_ids = [const.HOUSE1, const.HOUSE2, const.HOUSE3, const.HOUSE4,
                  const.HOUSE5, const.HOUSE6, const.HOUSE7, const.HOUSE8,
                  const.HOUSE9, const.HOUSE10, const.HOUSE11, const.HOUSE12]
@@ -137,11 +157,22 @@ def draw_chart_visual(chart_obj):
         cusp = houses_list.get(house_ids[i])
         rads = np.deg2rad(cusp.lon)
         
-        # Fixed Color Format: (R, G, B, Alpha) using floats 0-1
+        # Draw House Line
         ax.plot([rads, rads], [0, 0.9], color=(1, 1, 1, 0.3), linestyle='--', linewidth=1)
-        ax.text(rads, 0.4, str(i+1), size=10, color=(1, 1, 1, 0.5), ha='center', va='center')
+        
+        # House Number (Placed slightly inside)
+        # We calculate the mid-point of the house for the number
+        next_idx = (i + 1) % 12
+        next_cusp_rads = np.deg2rad(houses_list.get(house_ids[next_idx]).lon)
+        
+        # Handle wrap-around for label positioning
+        if next_cusp_rads < rads:
+            next_cusp_rads += 2 * np.pi
+            
+        mid_house = (rads + next_cusp_rads) / 2
+        ax.text(mid_house, 0.4, str(i+1), size=10, color=(1, 1, 1, 0.6), ha='center', va='center')
 
-    # Draw Planets
+    # --- 4. Draw Planets ---
     planet_symbols = {
         'Sun': '☉', 'Moon': '☽', 'Mercury': '☿', 'Venus': '♀', 'Mars': '♂',
         'Jupiter': '♃', 'Saturn': '♄', 'Uranus': '♅', 'Neptune': '♆', 'Pluto': '♇',
@@ -149,7 +180,7 @@ def draw_chart_visual(chart_obj):
     }
     
     calc_ids = [const.SUN, const.MOON, const.MERCURY, const.VENUS, const.MARS, 
-                const.JUPITER, const.SATURN, const.URANUS, const.NEPTUNE, const.PLUTO, const.NORTH_NODE]
+                const.JUPITER, const.SATURN, const.URANUS, const.NEPTUNE, const.PLUTO]
     
     for pid in calc_ids:
         obj = chart_obj.get(pid)
@@ -158,10 +189,10 @@ def draw_chart_visual(chart_obj):
         symbol = planet_symbols.get(obj.id, obj.id[0])
         ax.text(rads, 0.82, symbol, size=14, color='white', ha='center')
 
+    # Cleanup chart
     ax.set_ylim(0, 1.1)
     ax.set_yticks([])
-    ax.set_xticks(sectors[:-1])
-    ax.set_xticklabels([])
+    ax.set_xticks([]) # Remove default degree labels
     ax.grid(False)
     ax.spines['polar'].set_visible(False)
     
@@ -182,8 +213,9 @@ df_signs, df_houses = load_data()
 
 if submitted:
     try:
-        with st.spinner('Reading the stars...'):
-            geolocator = Nominatim(user_agent="astro_soul_app_en")
+        with st.spinner('Aligning with the cosmos...'):
+            # 1. Calculate
+            geolocator = Nominatim(user_agent="astro_soul_app_en_fixed")
             location = geolocator.geocode(city)
             if not location:
                 st.error(f"City not found: {city}")
@@ -200,12 +232,14 @@ if submitted:
             geo_pos = GeoPos(location.latitude, location.longitude)
             date = Datetime(f"{birth_date}".replace("-", "/"), f"{birth_time}", flatlib_offset)
             
+            # Removed NORTH_NODE to prevent excel errors
             calc_ids = [const.SUN, const.MOON, const.MERCURY, const.VENUS, const.MARS, 
-                        const.JUPITER, const.SATURN, const.URANUS, const.NEPTUNE, const.PLUTO, const.NORTH_NODE]
+                        const.JUPITER, const.SATURN, const.URANUS, const.NEPTUNE, const.PLUTO]
             
             chart = Chart(date, geo_pos, IDs=calc_ids)
             houses_list = chart.houses
 
+        # --- Header ---
         st.markdown(f"<h1>{name}'s Birth Chart</h1>", unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; opacity: 0.7'>{city} | {birth_date.strftime('%B %d, %Y')} | {birth_time.strftime('%H:%M')}</p>", unsafe_allow_html=True)
         st.markdown("---")
@@ -218,7 +252,7 @@ if submitted:
             st.pyplot(fig, use_container_width=True)
             
             asc = chart.get(const.ASC)
-            st.info(f"🏹 **Rising Sign (ASC):** {asc.sign} at {format_rounded_up(asc.signlon)}")
+            st.info(f"🏹 **Ascendant:** {asc.sign} {format_rounded_up(asc.signlon)}")
 
         with col_text:
             st.markdown("### Planetary Positions")
@@ -227,7 +261,7 @@ if submitted:
                 const.SUN: 'Sun / Earth', const.MOON: 'Moon', const.MERCURY: 'Mercury',
                 const.VENUS: 'Venus', const.MARS: 'Mars', const.JUPITER: 'jupiter',
                 const.SATURN: 'Saturn', const.URANUS: 'Uranus', const.NEPTUNE: 'Neptune',
-                const.PLUTO: 'Pluto', const.NORTH_NODE: 'North Node'
+                const.PLUTO: 'Pluto'
             }
             
             for planet_id in calc_ids:
